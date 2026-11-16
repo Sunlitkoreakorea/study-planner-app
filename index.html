@@ -688,6 +688,24 @@ body.ro .tb { cursor: default; }
 .home-gift { margin-bottom: 14px; border-color: var(--brand); }
 .cloudbanner { background: var(--bad-soft); color: var(--bad); font-size: 13px; font-weight: 600; padding-top: 6px; padding-bottom: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line); }
 
+/* 사용법 안내 */
+#tour .tour-bg { position: fixed; inset: 0; background: rgba(15, 18, 30, .45); z-index: 60; }
+#tour .tour-card { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(440px, calc(100% - 24px)); z-index: 61;
+  background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px 12px; box-shadow: 0 12px 32px rgba(16, 24, 40, .28); }
+#tour .tour-card.mid { top: 50%; bottom: auto; transform: translate(-50%, -50%); }
+#tour .tour-top { display: flex; align-items: center; min-height: 18px; }
+#tour .tour-n { font-size: 12px; font-weight: 700; color: var(--brand); }
+#tour .tour-x { margin-left: auto; border: 0; background: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 0 2px; }
+#tour .tour-t { display: block; font-size: 17px; margin: 2px 0 4px; }
+#tour p { margin: 0 0 6px; font-size: 14px; line-height: 1.55; color: var(--ink); }
+#tour .tour-s { font-size: 12.5px; font-weight: 700; color: var(--ok); margin-bottom: 6px; }
+#tour .tour-b { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+#tour .tour-card.mid .tour-b { justify-content: stretch; flex-direction: column; }
+#tour .tour-card.mid .tour-b .btn { width: 100%; text-align: center; padding: 10px; }
+.tour-hi { outline: 3px solid var(--brand); outline-offset: 3px; border-radius: 10px; animation: tourpulse 1.4s ease-in-out infinite; scroll-margin: 120px; }
+@keyframes tourpulse { 0%, 100% { outline-color: var(--brand); } 50% { outline-color: transparent; } }
+body.touring main.wrap { padding-bottom: 240px; }
+
 </style>
 </head>
 <body>
@@ -875,11 +893,12 @@ body.ro .tb { cursor: default; }
       .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   };
 
-  // 공유용(HTML 파일 하나) 처음 상태: 기본 시간표·과목은 그대로, 개인 일정(동아리 정기회의, KSEF 마감)은 뺀다
-  P.shareState = function () {
+  // 공유용(HTML 파일·링크) 처음 상태: 과목·시간표·시험·일정 없이 빈 화면으로 시작한다 (사용법 안내를 따라 채운다)
+  P.emptyState = function () {
     const s = P.defaultState({});
-    s.fixed = s.fixed.filter(f => f.id !== 'f_mirror');
-    s.milestones = s.milestones.filter(m => m.id !== 'm3');
+    s.subjects = [];
+    s.timetable = Array.from({ length: 5 }, () => Array(8).fill(''));
+    s.exams = []; s.milestones = []; s.fixed = []; s.dayOverrides = {};
     return s;
   };
 
@@ -2168,6 +2187,7 @@ body.ro .tb { cursor: default; }
         A.LOCAL = true; document.body.classList.add('local');
         let saved = null;
         try { saved = JSON.parse(localStorage.getItem(LSKEY) || 'null'); } catch (e) { saved = null; }
+        A.firstRun = !saved;
         r = { state: saved, env: { standalone: true } };
       }
       if (!r && !forceRO) { try { r = await api('/api/state'); } catch (e) { r = null; } }
@@ -2178,7 +2198,7 @@ body.ro .tb { cursor: default; }
         A.RO = true; document.body.classList.add('ro'); r = { state: snap.state, env: { publishedAt: snap.publishedAt } };
       }
       A.ENV = r.env || {};
-      A.S = migrate(r.state || (A.LOCAL ? P.shareState() : P.defaultState(A.ENV)));
+      A.S = migrate(r.state || (A.LOCAL ? P.emptyState() : P.defaultState(A.ENV)));
       if (A.RO) { try { const t = localStorage.getItem('planner-theme'); if (t) A.S.settings.theme = t; } catch (e) { /* noop */ } }   // 보기 전용: 이 기기에서 고른 화면 모드를 우선
       A.applyTheme(A.S.settings.theme);
       if (!r.state || A._migrated) A.save();
@@ -2188,6 +2208,7 @@ body.ro .tb { cursor: default; }
       if (A.onShow[A.ui.tab]) A.onShow[A.ui.tab]();
       A.render();
       if (A.cloudBoot) A.cloudBoot();                                                  // 클라우드에 연결돼 있으면 맞추기
+      if (A.tourAuto) A.tourAuto();                                                    // 공유용을 처음 열면 사용법 안내
     } catch (e) {
       document.getElementById('main').innerHTML = `<div class="card"><h2>서버에 연결할 수 없어요</h2><p>실행.bat 으로 서버를 켠 뒤 새로고침하세요.</p><pre class="prompt">${h.esc(e.message)}</pre></div>`;
     }
@@ -4447,7 +4468,7 @@ body.ro .tb { cursor: default; }
       <button class="navi add ${k === 'newsubj' ? 'on' : ''}" data-action="setsel" data-k="newsubj">＋ 과목 추가</button>
       <div class="navgroup">시간</div>${item('timetable', '시간표')}${item('avail', '가용 시간')}
       <div class="navgroup">계획</div>${item('rules', '계획 방식')}${item('stats', '걸린 시간 기록')}
-      <div class="navgroup">기타</div>${A.cloudReady && A.cloudReady() ? item('cloud', '클라우드 · 선물') : ''}${item('look', '화면 모드')}${item('files', A.LOCAL ? '백업' : '폴더 · 백업')}`;
+      <div class="navgroup">기타</div>${A.cloudReady && A.cloudReady() ? item('cloud', '클라우드 · 선물') : ''}${item('look', '화면 모드')}${item('help', '사용법')}${item('files', A.LOCAL ? '백업' : '폴더 · 백업')}`;
   }
 
   // ---------- 과목 하나 ----------
@@ -4636,7 +4657,7 @@ body.ro .tb { cursor: default; }
     if (!k || (k.startsWith('subj:') && !P.subj(S, k.slice(5)))) k = S.subjects[0] ? 'subj:' + S.subjects[0].id : 'timetable';
     let body;
     if (k.startsWith('subj:')) body = subject(S, k.slice(5));
-    else body = ({ newsubj: newSubject, timetable, avail, rules, stats, look, files, cloud: () => (h.cloudPanel ? h.cloudPanel() : '') }[k] || timetable)(S);
+    else body = ({ newsubj: newSubject, timetable, avail, rules, stats, look, files, cloud: () => (h.cloudPanel ? h.cloudPanel() : ''), help: () => `<div class="panel detail"><div class="dh"><h2>사용법</h2></div><div class="fl"><button class="btn primary" data-action="tourstart">처음부터 따라 하기</button></div></div>` }[k] || timetable)(S);
     return `<div class="md"><nav class="navlist">${nav(S, k)}</nav><section class="mdmain">${body}</section></div>`;
   };
 
@@ -4997,6 +5018,84 @@ window.PLANNER_DB = window.PLANNER_DB || { apiKey: 'AIzaSyAoOsrrqFrtjBGLxplsEfmf
     await dropGift(g.id);
   };
   Ac.giftno = el => dropGift(el.dataset.id);
+})();
+
+</script>
+<script>
+/* tour.js — 처음 쓰는 사람을 위한 사용법 안내.
+   화면 아래 작은 카드가 단계마다 해당 화면으로 옮겨 가고, 눌러야 할 곳을 반짝여 준다. 화면을 가리지 않아 직접 따라 하며 진행한다.
+   공유용(HTML 파일·링크)은 처음 열 때 자동으로 시작, 설정 → 사용법에서 언제든 다시 볼 수 있다. */
+(function () {
+  'use strict';
+  const A = window.App, h = A.h, esc = h.esc, Ac = A.actions;
+  const KEY = 'study-planner-tour-v1';
+  const T = { on: false, i: 0 };
+  const filled = S => (S.timetable || []).reduce((a, row) => a + row.filter(Boolean).length, 0);
+
+  const STEPS = [
+    { modal: true, title: '기말 플래너에 오신 걸 환영해요', text: '내 과목과 시간표를 넣으면 복습, 예습, 시험 대비를 날짜별로 알아서 짜 줘요.' },
+    { tab: 'settings', set: S => 'newsubj', hi: '#sb-name', title: '과목 추가', text: '과목 이름을 적고 ‘만들기’를 눌러요. 듣는 과목마다 반복해요.', st: S => `지금 ${S.subjects.length}과목` },
+    { tab: 'settings', set: S => (S.subjects[0] ? 'subj:' + S.subjects[0].id : 'newsubj'), hi: '.panel.detail .swrow', title: '복습·예습 정하기', text: '왼쪽에서 과목을 골라, 수업 뒤 복습할지와 전날 예습할지를 스위치로 정해요.' },
+    { tab: 'settings', set: S => 'timetable', hi: '.tbl.tt', title: '시간표', text: '칸을 눌러 요일과 교시마다 과목을 골라요. 수업한 날마다 복습이 생겨요.', st: S => `채운 칸 ${filled(S)}개` },
+    { tab: 'settings', set: S => 'avail', hi: '.panel.detail', title: '공부할 시간', text: '공부할 수 있는 시간(1자습, 2자습)을 정해요. 계획은 이 시간 안에서만 짜져요.' },
+    { tab: 'work', hi: '[data-k="newexam"]', title: '시험 날짜', text: '‘＋ 시험 추가’로 과목과 날짜를 넣으면 남은 날에 맞춰 시험 대비가 나눠져요. 날짜를 모르면 나중에 넣어도 돼요.', st: S => `시험 ${S.exams.length}개` },
+    { tab: 'today', hi: '.dayhead', title: '오늘', text: '매일 여기서 할 일을 봐요. ✓ 한 번이면 완료, 오른쪽 시간표 블록은 끌어서 옮겨요.' },
+    { tab: 'plan', hi: '.calgrid', title: '계획', text: '달력에서 날짜별 계획을 보고, 줄을 끌어 다른 날로 옮겨요.' },
+    { tab: 'alloc', hi: '.navi.add', title: '할당', text: '단어 WS 1~10 같은 묶음을 만들어 날짜에 하나씩 배정해요.' },
+    { tab: 'settings', set: () => (A.cloudReady && A.cloudReady() ? 'cloud' : 'files'), hi: '.panel.detail', title: '저장', text: A.LOCAL ? '데이터는 이 브라우저에 저장돼요. 클라우드 저장을 켜면 폰과 PC에서 같이 써요.' : '클라우드 저장을 켜면 폰과 PC에서 같이 써요.' },
+    { modal: true, title: '준비 끝!', text: '사용법은 설정 → 사용법에서 다시 볼 수 있어요.' }
+  ];
+
+  let root = null;
+  function paint() {
+    if (!T.on) { if (root) root.innerHTML = ''; document.body.classList.remove('touring'); return; }
+    if (!root) { root = document.createElement('div'); root.id = 'tour'; document.body.appendChild(root); }
+    document.body.classList.add('touring');
+    const s = STEPS[T.i], S = A.S, last = T.i === STEPS.length - 1, first = T.i === 0;
+    const cloud = A.cloudReady && A.cloudReady();
+    const btns = first
+      ? `<button class="btn primary" data-action="tournext">사용법 따라 하기</button>
+         <label class="btn">쓰던 데이터 불러오기<input type="file" id="state-file" accept=".json,application/json" hidden></label>
+         ${cloud ? '<button class="btn" data-action="tourcloud">다른 기기 코드로 연결</button>' : ''}
+         <button class="btn ghost" data-action="tourskip">건너뛰기</button>`
+      : `<button class="btn ghost" data-action="tourprev">이전</button>${last ? '<button class="btn primary" data-action="tourskip">시작하기</button>' : '<button class="btn primary" data-action="tournext">다음</button>'}`;
+    root.innerHTML = `${s.modal ? '<div class="tour-bg"></div>' : ''}<div class="tour-card ${s.modal ? 'mid' : ''}" role="dialog" aria-live="polite">
+      <div class="tour-top"><span class="tour-n">${first || last ? '' : `${T.i}/${STEPS.length - 2}`}</span>${last ? '' : '<button class="tour-x" data-action="tourskip" title="안내 닫기">✕</button>'}</div>
+      <b class="tour-t">${esc(s.title)}</b><p>${esc(s.text)}</p>${s.st ? `<div class="tour-s">${esc(s.st(S))}</div>` : ''}
+      <div class="tour-b">${btns}</div></div>`;
+    document.querySelectorAll('.tour-hi').forEach(e => e.classList.remove('tour-hi'));
+    const t = s.hi && document.querySelector(s.hi);
+    if (t) t.classList.add('tour-hi');
+  }
+  function go(i) {
+    T.i = Math.max(0, Math.min(STEPS.length - 1, i));
+    const s = STEPS[T.i];
+    if (s.set) A.ui.set = s.set(A.S);
+    if (s.tab && A.ui.tab !== s.tab) A.setTab(s.tab); else A.render();
+    paint();
+    const t = s.hi && document.querySelector(s.hi);
+    if (t && t.scrollIntoView) t.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  const finish = () => { T.on = false; try { localStorage.setItem(KEY, 'done'); } catch (e) { /* noop */ } paint(); A.render(); };
+
+  // 화면이 다시 그려질 때마다 카드의 숫자(과목 수 등)와 반짝임을 다시 붙인다
+  const origRender = A.render;
+  A.render = function () { origRender.apply(this, arguments); if (T.on) paint(); };
+
+  A.tourStart = () => { T.on = true; go(0); };
+  A.tourAuto = () => {
+    let seen = null;
+    try { seen = localStorage.getItem(KEY); } catch (e) { seen = 'done'; }
+    if (A.LOCAL && A.firstRun && !seen) A.tourStart();
+  };
+  Ac.tournext = () => go(T.i + 1);
+  Ac.tourprev = () => go(T.i - 1);
+  Ac.tourskip = finish;
+  Ac.tourstart = () => A.tourStart();
+  Ac.tourcloud = () => { finish(); A.ui.set = 'cloud'; A.setTab('settings'); };
+  // 첫 화면에서 ‘쓰던 데이터 불러오기’를 고르면 안내는 끝낸 것으로 (불러오기 처리는 설정의 백업 불러오기와 같은 코드가 한다)
+  document.addEventListener('change', ev => { if (ev.target && ev.target.id === 'state-file' && T.on) { try { localStorage.setItem(KEY, 'done'); } catch (e) { /* noop */ } } }, true);
+  document.addEventListener('keydown', ev => { if (T.on && ev.key === 'Escape') finish(); });
 })();
 
 </script>
