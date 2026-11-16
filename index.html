@@ -4635,7 +4635,7 @@ body.touring main.wrap { padding-bottom: 240px; }
     return `<div class="panel detail"><div class="dh"><h2>백업</h2></div>
       <div class="hint">데이터는 이 브라우저에만 저장돼요. 가끔 백업 파일을 내려받아 두세요.</div>
       <div class="fl"><button class="btn primary" data-action="exportState">백업 내려받기</button>
-        <label class="btn">백업 불러오기<input type="file" id="state-file" accept=".json,application/json" hidden></label>
+        <button class="btn" data-action="importBackup">백업 불러오기</button>
         <button class="btn ghost danger" data-action="resetLocal">처음 상태로</button></div></div>`;
   }
 
@@ -4648,7 +4648,7 @@ body.touring main.wrap { padding-bottom: 240px; }
         <div class="fl"><label class="wide">다글로 파일이 내려받아지는 폴더<input type="text" data-bind="settings.inbox" value="${esc(st.inbox)}"></label></div></section>
       ${publishSection()}
       <section class="grp"><h3>백업</h3>
-        <div class="fl"><button class="btn" data-action="openPath" data-path="${esc(A.ENV.dataDir || '')}">데이터 폴더 열기</button><button class="btn" data-action="exportState">백업 파일 내려받기</button></div>
+        <div class="fl"><button class="btn" data-action="openPath" data-path="${esc(A.ENV.dataDir || '')}">데이터 폴더 열기</button><button class="btn" data-action="exportState">백업 파일 내려받기</button><button class="btn" data-action="importBackup">백업 불러오기</button></div>
         <div class="hint">데이터는 ${esc(A.ENV.dataDir || '')}\\state.json 에 저장돼요. data\\backups 에 30분 간격으로 최대 30개가 자동 보관돼요.</div></section></div>`;
   }
 
@@ -4721,21 +4721,39 @@ body.touring main.wrap { padding-bottom: 240px; }
     try { localStorage.removeItem('study-planner-state-v1'); } catch (e) { /* noop */ }
     location.reload();
   };
-  // 백업 파일 불러오기 (단독 실행)
-  document.addEventListener('change', ev => {
-    const el = ev.target;
-    if (!el || el.id !== 'state-file' || !el.files || !el.files[0]) return;
+  // 백업 파일 불러오기. 화면을 다시 그려도 사라지지 않는 숨은 파일 선택기 하나를 쓴다
+  // (예전엔 다시 그려질 때 입력칸이 바뀌어 고른 파일을 못 받았고, 아이폰은 숨긴 입력칸·.json 제한 때문에 막힐 수 있었다)
+  let picker = null;
+  A.pickBackup = function () {
+    if (!picker) {
+      picker = document.createElement('input');
+      picker.type = 'file';
+      picker.setAttribute('aria-hidden', 'true');
+      picker.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';
+      picker.addEventListener('change', () => { const f = picker.files && picker.files[0]; if (f) A.importBackupFile(f); });
+      document.body.appendChild(picker);
+    }
+    picker.value = '';
+    picker.click();
+  };
+  A.importBackupFile = function (file) {
     const rd = new FileReader();
+    rd.onerror = () => A.toast('파일을 읽지 못했어요', true);
     rd.onload = () => {
       let obj = null;
-      try { obj = JSON.parse(rd.result); } catch (e) { obj = null; }
-      if (!obj || typeof obj !== 'object' || !obj.settings) { A.toast('플래너 백업 파일이 아니에요', true); el.value = ''; return; }
-      if (!window.confirm('지금 데이터를 이 백업 파일 내용으로 바꿀까요?')) { el.value = ''; return; }
-      try { localStorage.setItem('study-planner-state-v1', JSON.stringify(obj)); } catch (e) { A.toast('저장 공간이 부족해서 불러오지 못했어요', true); return; }
-      location.reload();
+      try { obj = JSON.parse(String(rd.result).replace(/^\uFEFF/, '')); } catch (e) { A.toast('백업 파일(.json)을 골라 주세요', true); return; }
+      if (obj && obj.state && obj.state.settings) obj = obj.state;               // 보기 전용 사이트의 snapshot.json 도 받는다
+      if (!obj || typeof obj !== 'object' || !obj.settings) { A.toast('기말 플래너 백업 파일이 아니에요', true); return; }
+      if (!window.confirm(`지금 데이터를 이 백업 파일 내용으로 바꿀까요? (과목 ${(obj.subjects || []).length}개)`)) return;
+      try { localStorage.setItem('study-planner-tour-v1', 'done'); } catch (e) { /* noop */ }
+      A.replaceState(obj);
+      A.flush();
+      if (A.tourEnd) A.tourEnd();
+      A.toast(`불러왔어요 · 과목 ${A.S.subjects.length}개`);
     };
-    rd.readAsText(el.files[0]);
-  });
+    rd.readAsText(file);
+  };
+  Ac.importBackup = () => A.pickBackup();
   Ac.exportState = () => {
     const blob = new Blob([JSON.stringify(A.S, null, 1)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -5055,7 +5073,7 @@ window.PLANNER_DB = window.PLANNER_DB || { apiKey: 'AIzaSyAoOsrrqFrtjBGLxplsEfmf
     const cloud = A.cloudReady && A.cloudReady();
     const btns = first
       ? `<button class="btn primary" data-action="tournext">사용법 따라 하기</button>
-         <label class="btn">쓰던 데이터 불러오기<input type="file" id="state-file" accept=".json,application/json" hidden></label>
+         <button class="btn" data-action="importBackup">쓰던 데이터 불러오기</button>
          ${cloud ? '<button class="btn" data-action="tourcloud">다른 기기 코드로 연결</button>' : ''}
          <button class="btn ghost" data-action="tourskip">건너뛰기</button>`
       : `<button class="btn ghost" data-action="tourprev">이전</button>${last ? '<button class="btn primary" data-action="tourskip">시작하기</button>' : '<button class="btn primary" data-action="tournext">다음</button>'}`;
@@ -5093,8 +5111,7 @@ window.PLANNER_DB = window.PLANNER_DB || { apiKey: 'AIzaSyAoOsrrqFrtjBGLxplsEfmf
   Ac.tourskip = finish;
   Ac.tourstart = () => A.tourStart();
   Ac.tourcloud = () => { finish(); A.ui.set = 'cloud'; A.setTab('settings'); };
-  // 첫 화면에서 ‘쓰던 데이터 불러오기’를 고르면 안내는 끝낸 것으로 (불러오기 처리는 설정의 백업 불러오기와 같은 코드가 한다)
-  document.addEventListener('change', ev => { if (ev.target && ev.target.id === 'state-file' && T.on) { try { localStorage.setItem(KEY, 'done'); } catch (e) { /* noop */ } } }, true);
+  A.tourEnd = () => { if (T.on) finish(); };            // 백업을 불러오면 안내를 닫는다
   document.addEventListener('keydown', ev => { if (T.on && ev.key === 'Escape') finish(); });
 })();
 
