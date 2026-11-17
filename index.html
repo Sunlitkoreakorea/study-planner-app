@@ -782,6 +782,11 @@ body.touring main.wrap { padding-bottom: 240px; }
 .lookopt .fsample { font-size: 19px; line-height: 1.2; }
 .lookopt .sshape { width: 100%; height: 26px; border: 1.5px solid var(--line); background: var(--bg); }
 
+/* 헤더: 가장 가까운 일정 D-day · 오늘 남은 할 일 */
+.brand .dd { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ddtoday { border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: 12px; background: var(--bg); color: var(--muted); flex: none; }
+.ddtoday:hover { color: var(--brand); }
+
 </style>
 </head>
 <body>
@@ -1896,12 +1901,15 @@ body.touring main.wrap { padding-bottom: 240px; }
   // ---------- 렌더 ----------
   function renderHeader() {
     const S = A.S, today = P.today();
-    const next = S.exams.filter(e => e.date && e.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+    // 헤더 왼쪽: 가장 가까운 일정(시험·할 일·수행평가…)의 D-day 와 오늘 남은 할 일 수
+    const near = P.upcoming(S, today).find(x => !x.overdue);
+    const D0 = A.PLAN && A.PLAN.days[0], left = D0 ? D0.entries.filter(e => !(e.custom && e.custom.kind === 'event')).length : 0;
     const prev = document.getElementById('savestate');
     const keep = prev ? prev.textContent : '';
     document.getElementById('top').innerHTML = `
       <div class="wrap bar">
-        <div class="brand" data-action="tab" data-tab="home" title="홈으로">기말 플래너${next ? `<span class="dd">${h.dday(next.date)} · 첫 시험 ${h.md(next.date)}</span>` : ''}</div>
+        <div class="brand" data-action="tab" data-tab="home" title="홈으로">기말 플래너${near ? `<span class="dd" title="${h.esc(near.title)} · ${h.md(near.date)}">${near.ongoing ? '진행 중' : h.dday(near.date, today)} · ${h.esc(near.title)}</span>` : ''}</div>
+        ${D0 && !A.RO ? `<button type="button" class="dd ddtoday" data-action="tab" data-tab="today" title="오늘 할 일 보기">오늘 ${left ? `${left}개 남음` : '할 일 끝 ✓'}</button>` : ''}
         <nav>${TABS.map(([k, n]) => `<button class="tab ${A.ui.tab === k ? 'on' : ''}" data-action="tab" data-tab="${k}">${n}</button>`).join('')}</nav>
         <span id="savestate" class="muted small">${h.esc(keep)}</span>
         <button type="button" class="btn sm ghost themebtn" data-action="theme" title="화면 모드 바꾸기 (자동 → 라이트 → 다크)">${THEMES[S.settings.theme] ? THEMES[S.settings.theme][0] : THEMES.system[0]}<span class="tm-t"> ${(THEMES[S.settings.theme] || THEMES.system)[1]}</span></button>
@@ -2496,7 +2504,7 @@ body.touring main.wrap { padding-bottom: 240px; }
   // 기존 할 일(안 끝낸 중요 할 일·과제) 목록 — 일정 추가 폼에서 골라 시간을 잡는다
   h.todoPicks = S => {
     const L = [];
-    for (const it of S.important) if (!it.done && it.date) L.push({ ref: 'imp:' + it.id, title: it.title, tag: '중요', sub: h.md(it.date), key: it.date });
+    for (const it of S.important) if (!it.done && it.date) L.push({ ref: 'imp:' + it.id, title: it.title, tag: '할 일', sub: h.md(it.date), key: it.date });
     for (const t of S.tasks) if (!t.done) L.push({ ref: 'task:' + t.id, title: t.title, tag: '과제', sub: t.due ? `마감 ${h.md(t.due)}` : '', key: t.due || '9' });
     return L.sort((a, b) => a.key.localeCompare(b.key));
   };
@@ -3307,13 +3315,14 @@ body.touring main.wrap { padding-bottom: 240px; }
 (function () {
   'use strict';
   const A = window.App, P = window.Planner, h = A.h, esc = h.esc;
-  const KIND = { imp: '중요 할 일', task: '마감 · 대회', exam: '시험', etc: '일정' };
-  const FILTERS = [['all', '전체'], ['imp', '중요'], ['task', '마감'], ['exam', '시험'], ['etc', '일정']];
+  const KIND = { imp: '할 일', task: '수행평가', exam: '시험', etc: '일정' };
+  const kindLabel = it => (it.kind !== 'task' ? KIND[it.kind] : it.id.startsWith('ms:') ? '수행평가' : it.id.startsWith('al:') ? '할당' : '과제 · 대회');
+  const FILTERS = [['all', '전체'], ['imp', '할 일'], ['task', '수행평가'], ['exam', '시험'], ['etc', '일정']];
 
   // ---------- 계획 탭 날짜 패널에 들어가는 ‘중요 할 일’ 상자 ----------
   h.impBox = (S, date) => {
     const items = S.important.filter(x => x.date === date);
-    return `<section class="impbox"><h3>중요 할 일 <small>홈 화면에 D-day 로 나와요</small></h3>
+    return `<section class="impbox"><h3>할 일 <small>홈 화면에 D-day 로 나와요</small></h3>
       ${A.ui.evForm && A.ui.evForm.mode === 'edit' && A.ui.evForm.kind === 'imp' && items.some(x => x.id === A.ui.evForm.id) ? h.evForm() : ''}
       ${items.map(it => `<div class="imp-r ${it.done ? 'done' : ''}">
         <button type="button" class="ick ${it.done ? 'on' : ''}" data-action="impdone" data-id="${esc(it.id)}" title="${it.done ? '다시 안 끝낸 걸로' : '끝냈어요'}">${it.done ? '✓' : ''}</button>
@@ -3332,8 +3341,8 @@ body.touring main.wrap { padding-bottom: 240px; }
     if (!f) return '';
     const add = f.mode === 'add', range = f.kind !== 'imp' && f.kind !== 'deadline';
     return `<div class="addform evform">
-      <div class="fl"><label class="wide">${add ? '새 일정' : '일정 고치기'}<input type="text" id="ev-title" data-enter="ev-save" maxlength="80" data-bind="ui.evForm.title" value="${esc(f.title)}" placeholder="예: KSEF 초안 제출, 동아리 발표"></label></div>
-      ${add ? `<div class="fl">${h.seg('ui.evForm.kind', f.kind, [['imp', '중요 할 일'], ['deadline', '마감'], ['etc', '일정']])}</div>` : ''}
+      <div class="fl"><label class="wide">${add ? '새 일정' : '일정 고치기'}<input type="text" id="ev-title" data-enter="ev-save" maxlength="80" data-bind="ui.evForm.title" value="${esc(f.title)}" placeholder="${f.kind === 'deadline' ? '예: 화학 실험 보고서, 영어 발표' : f.kind === 'etc' ? '예: 동아리 발표, 귀가' : '예: 단어 복습, 원서 접수'}"></label></div>
+      ${add ? `<div class="fl">${h.seg('ui.evForm.kind', f.kind, [['imp', '할 일'], ['deadline', '수행평가'], ['etc', '일정']])}</div>` : ''}
       <div class="fl"><label>날짜<input type="date" id="ev-date" data-bind="ui.evForm.date" value="${esc(f.date)}"></label>
         ${range ? `<label>끝나는 날 <small>(며칠이면)</small><input type="date" id="ev-end" data-bind="ui.evForm.end" value="${esc(f.end || '')}"></label>` : ''}</div>
       <div class="fl"><button type="button" class="btn primary" id="ev-save" data-action="evsave">${add ? '추가' : '저장'}</button><button type="button" class="btn ghost" data-action="evcancel">취소</button>${add ? '' : '<button type="button" class="btn ghost danger" data-action="evdel">삭제</button>'}</div></div>`;
@@ -3345,7 +3354,7 @@ body.touring main.wrap { padding-bottom: 240px; }
   function row(it, today) {
     const n = P.diffDays(today, it.date), inline = it.kind === 'imp' || it.id.startsWith('ms:'), isAl = it.id.startsWith('al:');   // 시험·과제는 시험·과제 탭에서 고친다
     const label = it.ongoing ? '진행 중' : h.dday(it.date, today);
-    const sub = `${h.md(it.date)}${it.end ? ' ~ ' + h.md(it.end) : ''} · ${KIND[it.kind]}${it.unconfirmed ? ' · 날짜 미확정' : ''}${it.overdue ? ' · 지났어요' : ''}${it.ongoing ? ` · ${h.dday(it.end, today)} 종료` : ''}`;
+    const sub = `${h.md(it.date)}${it.end ? ' ~ ' + h.md(it.end) : ''} · ${kindLabel(it)}${it.unconfirmed ? ' · 날짜 미확정' : ''}${it.overdue ? ' · 지났어요' : ''}${it.ongoing ? ` · ${h.dday(it.end, today)} 종료` : ''}`;
     return `<div class="up ${it.kind} ${it.ongoing ? 'ing' : urgency(n)}" role="button" tabindex="0" data-action="upgo" data-id="${esc(it.id)}" style="${it.color ? `--c:${it.color}` : ''}">
       <span class="ud">${esc(label)}</span>
       <span class="ut"><b>${esc(it.title)}</b><small>${esc(sub)}</small>${/^(imp|task):/.test(it.id) ? h.schedText(A.S, it.id, it.date) : ''}</span>
@@ -3382,7 +3391,7 @@ body.touring main.wrap { padding-bottom: 240px; }
       <header class="dayhead"><h1>다가오는 일정</h1><button class="btn primary" data-action="evnew">＋ 일정 추가</button></header>
       ${h.evForm()}
       ${al.urgent}
-      ${late ? `<div class="note bad">끝내지 못한 중요 할 일이 ${late}개 있어요.</div>` : ''}
+      ${late ? `<div class="note bad">끝내지 못한 할 일이 ${late}개 있어요.</div>` : ''}
       <div class="home-filter">${h.seg('ui.homeFilter', f, FILTERS.map(([k, n]) => [k, `${n} ${cnt(k)}`]))}</div>
       <div class="uplist">${shown.length ? shown.map(it => row(it, today)).join('') : `<div class="empty">${all.length ? '이 종류의 일정은 없어요.' : '다가오는 일정이 없어요.'}<br><small>위의 ＋ 일정 추가로 적을 수 있어요.</small></div>`}</div>
       <div class="hint">줄을 누르면 해당 날짜·시험·과제로 이동하고, ✎로 그 자리에서 고쳐요 (시험·과제는 시험·과제 탭에서). 날짜별로 적으려면 <button class="link" data-action="tab" data-tab="plan">계획</button> 탭에서 날짜를 눌러요.</div>
@@ -3607,7 +3616,7 @@ body.touring main.wrap { padding-bottom: 240px; }
       <section class="grp"><div class="fl"><label>이름<input type="text" data-bind="${b}.title" data-render="1" value="${esc(m.title)}" style="min-width:16rem"></label></div>
         <div class="fl"><label>날짜<input type="date" data-bind="${b}.date" data-render="1" value="${esc(m.date)}"></label>
           <label>끝나는 날 <small class="muted">(며칠이면)</small><input type="date" data-bind="${b}.end" value="${esc(m.end || '')}"></label></div>
-        ${row('종류', '', h.seg(`${b}.kind`, m.kind || 'etc', [['etc', '일반'], ['deadline', '마감'], ['exam', '시험']]))}</section>
+        ${row('종류', '', h.seg(`${b}.kind`, m.kind || 'etc', [['etc', '일반'], ['deadline', '수행평가'], ['exam', '시험']]))}</section>
       ${m.kind === 'deadline' && !hasTask ? `<button class="btn primary" data-action="msToTask" data-i="${i}">이 마감을 작업으로 추가해 시간 배정받기</button>` : ''}</div>`;
   }
   function newMs() {
@@ -3615,7 +3624,7 @@ body.touring main.wrap { padding-bottom: 240px; }
     return `<div class="panel detail"><div class="dh"><h2>일정 추가</h2></div>
       <section class="grp"><div class="fl"><label>이름<input type="text" data-bind="ui.msForm.title" value="${esc(f.title || '')}" style="min-width:16rem"></label>
         <label>날짜<input type="date" data-bind="ui.msForm.date" value="${esc(f.date || '')}"></label></div>
-        ${row('종류', '', h.seg('ui.msForm.kind', f.kind || 'etc', [['etc', '일반'], ['deadline', '마감'], ['exam', '시험']]))}</section>
+        ${row('종류', '', h.seg('ui.msForm.kind', f.kind || 'etc', [['etc', '일반'], ['deadline', '수행평가'], ['exam', '시험']]))}</section>
       <button class="btn primary" data-action="addMs">추가</button></div>`;
   }
   const empty = () => `<div class="panel empty">왼쪽에서 항목을 고르거나 추가하세요.</div>`;
@@ -5148,7 +5157,7 @@ window.PLANNER_DB = window.PLANNER_DB || { apiKey: 'AIzaSyAoOsrrqFrtjBGLxplsEfmf
     const S = A.S, today = P.today();
     if (g.kind === 'todo') {
       S.important.push({ id: 'i' + Date.now().toString(36), date: b.date && b.date >= today ? b.date : today, title: `${g.title} (${g.from})`, done: false });
-      A.toast('중요 할 일에 넣었어요');
+      A.toast('할 일에 넣었어요');
     } else if (g.kind === 'alloc') {
       const labels = (b.labels || []).filter(Boolean);
       S.allocs.push({ id: 'a' + Date.now().toString(36), title: g.title, color: P.COLORS[S.allocs.length % P.COLORS.length], min: b.min || 40, due: b.due && b.due >= today ? b.due : '', items: labels.map((label, i) => ({ id: String(i + 1), label, min: b.min || 40, done: false })) });
