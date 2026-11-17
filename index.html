@@ -787,6 +787,10 @@ body.touring main.wrap { padding-bottom: 240px; }
 .ddtoday { border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: 12px; background: var(--bg); color: var(--muted); flex: none; }
 .ddtoday:hover { color: var(--brand); }
 
+/* 헤더: 화면 끝까지 한 줄로. 진행 막대용 .bar 의 테두리와 회색 배경이 헤더에 섞여 가운데 상자처럼 보이던 것 정리 */
+#top > .wrap { max-width: none; }
+#top .bar { border: 0; border-radius: 0; background: none; }
+
 </style>
 </head>
 <body>
